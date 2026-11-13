@@ -1,0 +1,46 @@
+waiting for server to start.... done
+server started
+replica started on port 55432
+=== 1. Who is who ===
+You are now connected to database "txnbank" as user "codespace".
+ expected | port | in_recovery 
+----------+------+-------------
+ primary  | 5432 | f
+(1 row)
+
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "55432".
+ expected | port  | in_recovery 
+----------+-------+-------------
+ replica  | 55432 | t
+(1 row)
+
+=== 2. Write on the replica must be rejected ===
+psql:03_replica_tests.sql:10: ERROR:  cannot execute INSERT in a read-only transaction
+=== 3. Insert on the primary, then read it on the replica ===
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+DELETE 0
+INSERT 0 1
+ pg_sleep 
+----------
+ 
+(1 row)
+
+ via_socket |   state   | sync_state 
+------------+-----------+------------
+ t          | streaming | async
+(1 row)
+
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "55432".
+    code    |     name     
+------------+--------------
+ RPL-TEST01 | Replica test
+(1 row)
+
+   replay_lag    | replica_lsn 
+-----------------+-------------
+ 00:00:01.009915 | 0/B0006A8
+(1 row)
+
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+DELETE 1
+=== replica tests done ===

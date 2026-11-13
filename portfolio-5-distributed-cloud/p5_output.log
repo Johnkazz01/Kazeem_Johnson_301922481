@@ -1,6 +1,5 @@
 === P5 partitioning
 SET
-psql:01_partitioning.sql:15: NOTICE:  table "ledger_entry_part" does not exist, skipping
 DROP TABLE
 CREATE TABLE
 DO
@@ -22,32 +21,80 @@ INSERT 0 92032
 === EXPLAIN ANALYZE: single-month pruning ===
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Append  (cost=0.16..2196.46 rows=140 width=418) (actual time=0.008..3.332 rows=7120 loops=1)
+ Append  (cost=0.16..2196.46 rows=140 width=418) (actual time=0.007..2.850 rows=7120 loops=1)
    Buffers: shared hit=95
    Subplans Removed: 36
-   ->  Seq Scan on ledger_entry_part_2026_11 ledger_entry_part_1  (cost=0.00..146.30 rows=9 width=418) (actual time=0.007..2.866 rows=7120 loops=1)
+   ->  Seq Scan on ledger_entry_part_2026_11 ledger_entry_part_1  (cost=0.00..146.30 rows=9 width=418) (actual time=0.007..2.416 rows=7120 loops=1)
          Filter: ((created_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)) AND (created_at < date_trunc('month'::text, (CURRENT_DATE + '1 mon'::interval))))
          Buffers: shared hit=95
  Planning:
-   Buffers: shared hit=38
- Planning Time: 1.257 ms
- Execution Time: 3.607 ms
+   Buffers: shared hit=37 read=1
+ Planning Time: 1.305 ms
+ Execution Time: 3.106 ms
 (10 rows)
 
 === EXPLAIN ANALYZE: previous-month pruning ===
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Append  (cost=0.16..2196.46 rows=140 width=418) (actual time=0.013..8.238 rows=15900 loops=1)
+ Append  (cost=0.16..2196.46 rows=140 width=418) (actual time=0.007..10.307 rows=15900 loops=1)
    Buffers: shared hit=212
    Subplans Removed: 36
-   ->  Seq Scan on ledger_entry_part_2026_10 ledger_entry_part_1  (cost=0.00..326.48 rows=19 width=418) (actual time=0.013..7.180 rows=15900 loops=1)
+   ->  Seq Scan on ledger_entry_part_2026_10 ledger_entry_part_1  (cost=0.00..326.48 rows=19 width=418) (actual time=0.007..9.151 rows=15900 loops=1)
          Filter: ((created_at >= date_trunc('month'::text, (CURRENT_DATE - '1 mon'::interval))) AND (created_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
          Buffers: shared hit=212
  Planning:
    Buffers: shared hit=32
- Planning Time: 2.895 ms
- Execution Time: 8.845 ms
+ Planning Time: 1.173 ms
+ Execution Time: 10.970 ms
 (10 rows)
 
 === 01_partitioning.sql complete ===
 === P5 replica setup
+waiting for server to start.... done
+server started
+replica started on port 55432
+=== P5 replica tests
+=== 1. Who is who ===
+You are now connected to database "txnbank" as user "codespace".
+ expected | port | in_recovery 
+----------+------+-------------
+ primary  | 5432 | f
+(1 row)
+
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "55432".
+ expected | port  | in_recovery 
+----------+-------+-------------
+ replica  | 55432 | t
+(1 row)
+
+=== 2. Write on the replica must be rejected ===
+psql:03_replica_tests.sql:10: ERROR:  cannot execute INSERT in a read-only transaction
+=== 3. Insert on the primary, then read it on the replica ===
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+DELETE 0
+INSERT 0 1
+ pg_sleep 
+----------
+ 
+(1 row)
+
+ via_socket |   state   | sync_state 
+------------+-----------+------------
+ t          | streaming | async
+(1 row)
+
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "55432".
+    code    |     name     
+------------+--------------
+ RPL-TEST01 | Replica test
+(1 row)
+
+   replay_lag    | replica_lsn 
+-----------------+-------------
+ 00:00:01.009915 | 0/B0006A8
+(1 row)
+
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+DELETE 1
+=== replica tests done ===
+P5 COMPLETE

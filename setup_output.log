@@ -1,0 +1,19 @@
+DO
+ALTER DATABASE
+NOTE: install mongod manually if P4 fails
+Collecting psycopg2-binary
+  Downloading psycopg2_binary-2.9.13-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (4.9 kB)
+Collecting pymongo
+  Downloading pymongo-4.20.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (10 kB)
+Collecting dnspython<3.0.0,>=2.7.0 (from pymongo)
+  Downloading dnspython-2.9.2-py3-none-any.whl.metadata (5.8 kB)
+Downloading psycopg2_binary-2.9.13-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.3/4.3 MB 36.0 MB/s  0:00:00
+Downloading pymongo-4.20.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (1.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.1/1.1 MB 37.6 MB/s  0:00:00
+Downloading dnspython-2.9.2-py3-none-any.whl (360 kB)
+Installing collected packages: psycopg2-binary, dnspython, pymongo
+
+Successfully installed dnspython-2.9.2 psycopg2-binary-2.9.13 pymongo-4.20.0
+python packages OK
+setup complete

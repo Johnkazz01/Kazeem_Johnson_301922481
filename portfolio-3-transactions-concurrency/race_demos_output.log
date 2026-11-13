@@ -1,0 +1,58 @@
+
+======================================================================
+PART 1: The bug - two workers read the same PENDING transfer
+======================================================================
+  Worker 1 result: ('settled', 50035)
+  Worker 2 result: ('error: Unbalanced ledger for transfer 50035: debits=2000.00, credits=1000.00', None)
+  Per-transfer ledger entry counts:
+    ('RACE-BUG-001', 2)
+    ('RACE-BUG-002', 0)
+  BUG: both workers targeted the same transfer_id. One worker either
+  duplicates the settlement or fails with a confusing check_violation.
+
+======================================================================
+PART 2: UNIQUE constraint fix - settlement_claim rejects duplicates
+======================================================================
+  Worker 1 result: ('rejected: duplicate key value violates unique constraint "settlement_claim_transfer_id_key"', 50037)
+  Worker 2 result: ('claimed', 50037)
+  Claims recorded: [('W2', 50037)]
+  FIX: exactly one worker holds the claim; the other is rejected cleanly.
+
+======================================================================
+PART 3: FOR UPDATE SKIP LOCKED - each worker gets a different transfer
+======================================================================
+  Worker 1 result: ('settled', 50039)
+  Worker 2 result: ('settled', 50038)
+  Per-transfer status / ledger counts:
+    ('RACE-SKIP-001', 'SETTLED', 2)
+    ('RACE-SKIP-002', 'SETTLED', 2)
+    ('RACE-SKIP-003', 'PENDING', 0)
+  FIX: each worker settled a different transfer; no duplicates.
+
+======================================================================
+PART 4: SERIALIZABLE isolation - expects SQLSTATE 40001
+======================================================================
+  Worker 1 result: ('40001 serialization_failure (40001)', None)
+  Worker 2 result: ('settled', 50041)
+  Under SERIALIZABLE isolation one worker commits and the other is
+  aborted with SQLSTATE 40001 (serialization_failure) and must retry.
+
+======================================================================
+PART 5: READ COMMITTED vs REPEATABLE READ
+======================================================================
+  READ COMMITTED  reader saw: before=PENDING, after=SETTLED (sees the writer's commit)
+  REPEATABLE READ reader saw: before=PENDING, after=PENDING (snapshot frozen at first read)
+
+======================================================================
+PART 6: Deadlock (40P01) and the fixed-account-order fix
+======================================================================
+  6a Buggy (lock in transfer direction):
+    Worker 1: ('committed', 'RACE-DEAD-001')
+    Worker 2: ('40P01 deadlock (DeadlockDetected)', 'RACE-DEAD-002')
+    One worker should hit SQLSTATE 40P01 (deadlock_detected).
+  6b Fixed (lock accounts in id order):
+    Worker 1: ('committed', 'RACE-DEAD-001')
+    Worker 2: ('committed', 'RACE-DEAD-002')
+    Both workers commit; the lock-ordering prevents the deadlock.
+
+=== race_demos.py complete ===

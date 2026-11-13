@@ -1,0 +1,177 @@
+=== P3 transactions
+SET
+======================================================================
+DEMO 1: COMMITTED funds transfer (account 2 -> account 3, 5000 NGN)
+======================================================================
+--- BEFORE: balances of account 2 and 3 ---
+ account_id | account_number |  balance   
+------------+----------------+------------
+          2 | 0000000002     | 7228700.00
+          3 | 0000000003     | 3162400.00
+(2 rows)
+
+--- Executing the transfer inside one transaction ---
+BEGIN
+INSERT 0 2
+COMMIT
+--- AFTER: balances of account 2 and 3 ---
+ account_id | account_number |  balance   
+------------+----------------+------------
+          2 | 0000000002     | 7223700.00
+          3 | 0000000003     | 3167400.00
+(2 rows)
+
+--- Cleanup demo 1 ---
+DELETE 2
+DELETE 1
+UPDATE 2
+======================================================================
+DEMO 2: ROLLED-BACK funds transfer (account 4 -> account 5, 7000 NGN)
+======================================================================
+--- BEFORE: balances of account 4 and 5 ---
+ account_id | account_number |  balance   
+------------+----------------+------------
+          4 | 0000000004     |  495300.00
+          5 | 0000000005     | -771500.00
+(2 rows)
+
+--- Executing the transfer inside a transaction that will ROLLBACK ---
+BEGIN
+INSERT 0 2
+--- ROLLBACK issued; nothing should persist ---
+ROLLBACK
+--- AFTER: balances of account 4 and 5 (unchanged) ---
+ account_id | account_number |  balance   
+------------+----------------+------------
+          4 | 0000000004     |  495300.00
+          5 | 0000000005     | -771500.00
+(2 rows)
+
+--- Verify the rolled-back transfer is NOT in the table ---
+ demo_rollback_rows 
+--------------------
+                  0
+(1 row)
+
+======================================================================
+DEMO 3: SAVEPOINT recovery in a bulk salary payment
+A corporate payroll account (11) pays 9 beneficiaries. One item has an
+amount that exceeds the overdraft limit; the SAVEPOINT skips it while
+the other 8 items still commit.
+======================================================================
+--- BEFORE: balance of payroll account 11 and bulk item statuses ---
+ account_id | account_number |   balance   
+------------+----------------+-------------
+         11 | 0000000011     | 11171300.00
+(1 row)
+
+ bulk_item_id | credit_account_id | beneficiary_name |  amount   | status  
+--------------+-------------------+------------------+-----------+---------
+            1 |                 2 | Chinedu Okafor   | 250000.00 | PENDING
+            2 |                 3 | Ngozi Eze        | 180000.00 | PENDING
+            3 |                 4 | Tunde Bakare     | 220000.00 | PENDING
+            4 |                 5 | Fatima Bello     | 150000.00 | PENDING
+            5 |                 6 | Emeka Nwosu      | 300000.00 | PENDING
+            6 |                 7 | Aisha Mohammed   | 175000.00 | PENDING
+            7 |                 8 | Funke Adebayo    | 200000.00 | PENDING
+            8 |                 9 | Ibrahim Musa     | 165000.00 | PENDING
+            9 |                10 | Zainab Yusuf     | 140000.00 | PENDING
+(9 rows)
+
+--- Sabotage ONE item so the SAVEPOINT path is exercised ---
+UPDATE 1
+UPDATE 9
+--- Running the bulk salary loop with SAVEPOINT recovery ---
+psql:01_transactions.sql:161: NOTICE:  Bulk salary run complete: 8 paid, 1 failed
+DO
+--- AFTER: balance of payroll account 11 and bulk item statuses ---
+ account_id | account_number |  balance   
+------------+----------------+------------
+         11 | 0000000011     | 9641300.00
+(1 row)
+
+ bulk_item_id | credit_account_id | beneficiary_name |    amount    | status |                                                   failure_reason                                                   
+--------------+-------------------+------------------+--------------+--------+--------------------------------------------------------------------------------------------------------------------
+            1 |                 2 | Chinedu Okafor   | 100000000.00 | FAILED | Overdraft limit exceeded on account 11: debit of 100000000.00 would leave balance -88828700.00 (limit -5000000.00)
+            2 |                 3 | Ngozi Eze        |    180000.00 | PAID   | 
+            3 |                 4 | Tunde Bakare     |    220000.00 | PAID   | 
+            4 |                 5 | Fatima Bello     |    150000.00 | PAID   | 
+            5 |                 6 | Emeka Nwosu      |    300000.00 | PAID   | 
+            6 |                 7 | Aisha Mohammed   |    175000.00 | PAID   | 
+            7 |                 8 | Funke Adebayo    |    200000.00 | PAID   | 
+            8 |                 9 | Ibrahim Musa     |    165000.00 | PAID   | 
+            9 |                10 | Zainab Yusuf     |    140000.00 | PAID   | 
+(9 rows)
+
+--- Cleanup demo 3: undo all bulk salary transfers and reset items ---
+DELETE 16
+DELETE 8
+UPDATE 9
+UPDATE 17
+--- Verify cleanup: no demo transfers remain ---
+ demo_rows_remaining 
+---------------------
+                   0
+(1 row)
+
+=== 01_transactions.sql complete ===
+=== P3 race demos
+
+======================================================================
+PART 1: The bug - two workers read the same PENDING transfer
+======================================================================
+  Worker 1 result: ('settled', 50035)
+  Worker 2 result: ('error: Unbalanced ledger for transfer 50035: debits=2000.00, credits=1000.00', None)
+  Per-transfer ledger entry counts:
+    ('RACE-BUG-001', 2)
+    ('RACE-BUG-002', 0)
+  BUG: both workers targeted the same transfer_id. One worker either
+  duplicates the settlement or fails with a confusing check_violation.
+
+======================================================================
+PART 2: UNIQUE constraint fix - settlement_claim rejects duplicates
+======================================================================
+  Worker 1 result: ('rejected: duplicate key value violates unique constraint "settlement_claim_transfer_id_key"', 50037)
+  Worker 2 result: ('claimed', 50037)
+  Claims recorded: [('W2', 50037)]
+  FIX: exactly one worker holds the claim; the other is rejected cleanly.
+
+======================================================================
+PART 3: FOR UPDATE SKIP LOCKED - each worker gets a different transfer
+======================================================================
+  Worker 1 result: ('settled', 50039)
+  Worker 2 result: ('settled', 50038)
+  Per-transfer status / ledger counts:
+    ('RACE-SKIP-001', 'SETTLED', 2)
+    ('RACE-SKIP-002', 'SETTLED', 2)
+    ('RACE-SKIP-003', 'PENDING', 0)
+  FIX: each worker settled a different transfer; no duplicates.
+
+======================================================================
+PART 4: SERIALIZABLE isolation - expects SQLSTATE 40001
+======================================================================
+  Worker 1 result: ('40001 serialization_failure (40001)', None)
+  Worker 2 result: ('settled', 50041)
+  Under SERIALIZABLE isolation one worker commits and the other is
+  aborted with SQLSTATE 40001 (serialization_failure) and must retry.
+
+======================================================================
+PART 5: READ COMMITTED vs REPEATABLE READ
+======================================================================
+  READ COMMITTED  reader saw: before=PENDING, after=SETTLED (sees the writer's commit)
+  REPEATABLE READ reader saw: before=PENDING, after=PENDING (snapshot frozen at first read)
+
+======================================================================
+PART 6: Deadlock (40P01) and the fixed-account-order fix
+======================================================================
+  6a Buggy (lock in transfer direction):
+    Worker 1: ('committed', 'RACE-DEAD-001')
+    Worker 2: ('40P01 deadlock (DeadlockDetected)', 'RACE-DEAD-002')
+    One worker should hit SQLSTATE 40P01 (deadlock_detected).
+  6b Fixed (lock accounts in id order):
+    Worker 1: ('committed', 'RACE-DEAD-001')
+    Worker 2: ('committed', 'RACE-DEAD-002')
+    Both workers commit; the lock-ordering prevents the deadlock.
+
+=== race_demos.py complete ===
+P3 COMPLETE

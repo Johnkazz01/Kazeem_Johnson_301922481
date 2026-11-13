@@ -1,0 +1,204 @@
+ALTER DATABASE
+=== P1 01_schema
+ALTER DATABASE
+SET
+psql:01_schema.sql:11: NOTICE:  relation "ledger_entry" does not exist, skipping
+DROP TRIGGER
+psql:01_schema.sql:12: NOTICE:  relation "ledger_entry" does not exist, skipping
+DROP TRIGGER
+psql:01_schema.sql:13: NOTICE:  relation "ledger_entry" does not exist, skipping
+DROP TRIGGER
+psql:01_schema.sql:14: NOTICE:  function check_account_status() does not exist, skipping
+DROP FUNCTION
+psql:01_schema.sql:15: NOTICE:  function check_debit_balance() does not exist, skipping
+DROP FUNCTION
+psql:01_schema.sql:16: NOTICE:  function check_transfer_balanced() does not exist, skipping
+DROP FUNCTION
+psql:01_schema.sql:18: NOTICE:  table "bulk_payment_item" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:19: NOTICE:  table "standing_order" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:20: NOTICE:  table "ledger_entry" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:21: NOTICE:  table "transfer" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:22: NOTICE:  table "settlement_batch" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:23: NOTICE:  table "fee_schedule" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:24: NOTICE:  table "account" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:25: NOTICE:  table "account_type" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:26: NOTICE:  table "customer" does not exist, skipping
+DROP TABLE
+psql:01_schema.sql:27: NOTICE:  table "branch" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE FUNCTION
+psql:01_schema.sql:321: NOTICE:  trigger "trg_standing_order_dates" for relation "standing_order" does not exist, skipping
+DROP TRIGGER
+CREATE TRIGGER
+=== P1 02_indexes
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+=== P1 03_seed_data
+SET
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+INSERT 0 6
+INSERT 0 4
+INSERT 0 16
+INSERT 0 16
+INSERT 0 1
+INSERT 0 6
+INSERT 0 3
+INSERT 0 16
+INSERT 0 32
+INSERT 0 6
+INSERT 0 1
+INSERT 0 9
+                          ?column?                           
+-------------------------------------------------------------
+ seed complete: 17 accounts, 6 standing orders, 9 bulk items
+(1 row)
+
+=== P1 04_bulk_data
+SET
+DELETE 0
+DELETE 0
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+INSERT 0 50000
+INSERT 0 92000
+UPDATE 17
+UPDATE 0
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+                         result                         
+--------------------------------------------------------
+ balance check: PASS (all cached balances match ledger)
+(1 row)
+
+           ?column?            
+-------------------------------
+ bulk summary: transfers=50000
+(1 row)
+
+              ?column?              
+------------------------------------
+ bulk summary: ledger_entries=92000
+(1 row)
+
+                     ?column?                      
+---------------------------------------------------
+ bulk summary: pending_transfers_next_14_days=2000
+(1 row)
+
+=== P1 05_constraint_tests
+SET
+=== Constraint tests for Lagos Meridian Bank ===
+BEGIN
+psql:05_constraint_tests.sql:22: NOTICE:  PASS: customer_type_check - new row for relation "customer" violates check constraint "customer_customer_type_check"
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:36: NOTICE:  PASS: unique_bvn - duplicate key value violates unique constraint "customer_bvn_key"
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:50: NOTICE:  PASS: fk_account_customer - insert or update on table "account" violates foreign key constraint "account_customer_id_fkey"
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:64: NOTICE:  PASS: transfer_amount_positive - new row for relation "transfer" violates check constraint "transfer_amount_check"
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:78: NOTICE:  PASS: transfer_self_transfer - new row for relation "transfer" violates check constraint "transfer_check"
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:104: NOTICE:  PASS: closed_account_no_transact - Account 19 is CLOSED and cannot transact
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:130: NOTICE:  PASS: frozen_account_no_transact - Account 20 is FROZEN and cannot transact
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:158: NOTICE:  PASS: debit_below_zero - Insufficient funds on account 21: debit of 1000.00 would leave balance -1000.00
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:186: NOTICE:  PASS: balanced_debit_credit - Unbalanced ledger for transfer 50022: debits=200.00, credits=0.00
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:206: NOTICE:  PASS: partial_unique_standing_order - duplicate key value violates unique constraint "uq_active_standing_order"
+DO
+ROLLBACK
+BEGIN
+psql:05_constraint_tests.sql:234: NOTICE:  PASS: control_valid_transfer - balanced 1000 NGN transfer posted successfully
+DO
+ROLLBACK
+=== Constraint tests complete ===
+=== P1 ledger checks
+ unbalanced_transfers 
+----------------------
+                    0
+(1 row)
+
+ failed_transfers_with_ledger_entries 
+--------------------------------------
+                                    0
+(1 row)
+
+P1 COMPLETE

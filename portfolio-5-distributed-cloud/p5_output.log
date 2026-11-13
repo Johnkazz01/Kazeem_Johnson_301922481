@@ -1,0 +1,53 @@
+=== P5 partitioning
+SET
+psql:01_partitioning.sql:15: NOTICE:  table "ledger_entry_part" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+DO
+CREATE TABLE
+INSERT 0 92032
+=== Rows per partition ===
+      partition_name       | row_count 
+---------------------------+-----------
+ ledger_entry_part_2024_01 |        32
+ ledger_entry_part_2026_05 |      6754
+ ledger_entry_part_2026_06 |     15298
+ ledger_entry_part_2026_07 |     15794
+ ledger_entry_part_2026_08 |     15790
+ ledger_entry_part_2026_09 |     15344
+ ledger_entry_part_2026_10 |     15900
+ ledger_entry_part_2026_11 |      7120
+(8 rows)
+
+=== EXPLAIN ANALYZE: single-month pruning ===
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Append  (cost=0.16..2196.46 rows=140 width=418) (actual time=0.008..3.332 rows=7120 loops=1)
+   Buffers: shared hit=95
+   Subplans Removed: 36
+   ->  Seq Scan on ledger_entry_part_2026_11 ledger_entry_part_1  (cost=0.00..146.30 rows=9 width=418) (actual time=0.007..2.866 rows=7120 loops=1)
+         Filter: ((created_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)) AND (created_at < date_trunc('month'::text, (CURRENT_DATE + '1 mon'::interval))))
+         Buffers: shared hit=95
+ Planning:
+   Buffers: shared hit=38
+ Planning Time: 1.257 ms
+ Execution Time: 3.607 ms
+(10 rows)
+
+=== EXPLAIN ANALYZE: previous-month pruning ===
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Append  (cost=0.16..2196.46 rows=140 width=418) (actual time=0.013..8.238 rows=15900 loops=1)
+   Buffers: shared hit=212
+   Subplans Removed: 36
+   ->  Seq Scan on ledger_entry_part_2026_10 ledger_entry_part_1  (cost=0.00..326.48 rows=19 width=418) (actual time=0.013..7.180 rows=15900 loops=1)
+         Filter: ((created_at >= date_trunc('month'::text, (CURRENT_DATE - '1 mon'::interval))) AND (created_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+         Buffers: shared hit=212
+ Planning:
+   Buffers: shared hit=32
+ Planning Time: 2.895 ms
+ Execution Time: 8.845 ms
+(10 rows)
+
+=== 01_partitioning.sql complete ===
+=== P5 replica setup

@@ -306,12 +306,12 @@ Seed complete: 12 events, 3 fraud alerts.
 02_data_and_queries.js complete.
 === P4 03_bulk_and_index_demo
 Dropped existing index idx_channel_amount_created.
-Inserted 40000 documents in 936 ms.
+Inserted 40000 documents in 834 ms.
 
 === BEFORE: COLLSCAN ($natural hint) ===
 Stage BEFORE:        COLLSCAN
 Docs BEFORE:         40012
-Time ms BEFORE:      32
+Time ms BEFORE:      22
 Docs returned BEFORE: 538
 
 Created compound index idx_channel_amount_created.
@@ -319,13 +319,13 @@ Created compound index idx_channel_amount_created.
 === AFTER: IXSCAN (compound index) ===
 Stage AFTER:         IXSCAN
 Docs AFTER:          538
-Time ms AFTER:       3
+Time ms AFTER:       2
 Docs returned AFTER: 538
 
 === SUMMARY ===
 Stage     | Docs examined | Time ms
-BEFORE    | 40012 | 32
-AFTER     | 538 | 3
+BEFORE    | 40012 | 22
+AFTER     | 538 | 2
 
 03_bulk_and_index_demo.js complete.
 P4 COMPLETE

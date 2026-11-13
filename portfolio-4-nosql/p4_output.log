@@ -1,0 +1,331 @@
+=== P4 01_setup
+=== transaction_events validator ===
+{
+  '$jsonSchema': {
+    bsonType: 'object',
+    required: [
+      '_id',
+      'event_id',
+      'transfer_reference',
+      'channel',
+      'event_type',
+      'amount',
+      'currency',
+      'metadata',
+      'created_at'
+    ],
+    properties: {
+      _id: {
+        bsonType: 'objectId'
+      },
+      event_id: {
+        bsonType: 'string'
+      },
+      transfer_reference: {
+        bsonType: 'string'
+      },
+      channel: {
+        enum: [
+          'branch',
+          'internet_banking',
+          'ussd'
+        ]
+      },
+      event_type: {
+        enum: [
+          'initiated',
+          'settled',
+          'failed',
+          'reversed'
+        ]
+      },
+      amount: {
+        bsonType: 'double'
+      },
+      currency: {
+        enum: [
+          'NGN'
+        ]
+      },
+      metadata: {
+        bsonType: 'object'
+      },
+      created_at: {
+        bsonType: 'date'
+      }
+    },
+    additionalProperties: false,
+    oneOf: [
+      {
+        properties: {
+          channel: {
+            enum: [
+              'branch'
+            ]
+          },
+          metadata: {
+            bsonType: 'object',
+            required: [
+              'teller_id',
+              'branch_code'
+            ],
+            properties: {
+              teller_id: {
+                bsonType: 'string'
+              },
+              branch_code: {
+                bsonType: 'string'
+              }
+            },
+            additionalProperties: false
+          }
+        }
+      },
+      {
+        properties: {
+          channel: {
+            enum: [
+              'internet_banking'
+            ]
+          },
+          metadata: {
+            bsonType: 'object',
+            required: [
+              'session_id',
+              'ip_address'
+            ],
+            properties: {
+              session_id: {
+                bsonType: 'string'
+              },
+              ip_address: {
+                bsonType: 'string'
+              }
+            },
+            additionalProperties: false
+          }
+        }
+      },
+      {
+        properties: {
+          channel: {
+            enum: [
+              'ussd'
+            ]
+          },
+          metadata: {
+            bsonType: 'object',
+            required: [
+              'phone',
+              'ussd_code'
+            ],
+            properties: {
+              phone: {
+                bsonType: 'string'
+              },
+              ussd_code: {
+                bsonType: 'string'
+              }
+            },
+            additionalProperties: false
+          }
+        }
+      }
+    ]
+  }
+}
+=== fraud_alerts validator ===
+{
+  '$jsonSchema': {
+    bsonType: 'object',
+    required: [
+      '_id',
+      'alert_id',
+      'transfer_reference',
+      'reason',
+      'severity',
+      'status',
+      'amount',
+      'currency',
+      'created_at'
+    ],
+    properties: {
+      _id: {
+        bsonType: 'objectId'
+      },
+      alert_id: {
+        bsonType: 'string'
+      },
+      transfer_reference: {
+        bsonType: 'string'
+      },
+      reason: {
+        bsonType: 'string'
+      },
+      severity: {
+        enum: [
+          'LOW',
+          'MEDIUM',
+          'HIGH'
+        ]
+      },
+      status: {
+        enum: [
+          'OPEN',
+          'IN_REVIEW',
+          'CLOSED'
+        ]
+      },
+      amount: {
+        bsonType: 'double'
+      },
+      currency: {
+        enum: [
+          'NGN'
+        ]
+      },
+      created_at: {
+        bsonType: 'date'
+      },
+      reviewed_at: {
+        bsonType: 'date'
+      },
+      reviewer: {
+        bsonType: 'string'
+      }
+    },
+    additionalProperties: false,
+    oneOf: [
+      {
+        properties: {
+          status: {
+            enum: [
+              'OPEN'
+            ]
+          }
+        },
+        required: [
+          'status'
+        ]
+      },
+      {
+        properties: {
+          status: {
+            enum: [
+              'IN_REVIEW',
+              'CLOSED'
+            ]
+          }
+        },
+        required: [
+          'status',
+          'reviewed_at',
+          'reviewer'
+        ]
+      }
+    ]
+  }
+}
+01_setup.js complete: transaction_events + fraud_alerts created.
+=== P4 02_data_and_queries
+Seed complete: 12 events, 3 fraud alerts.
+
+=== Pipeline 1: total transaction value and count by channel ===
+[
+  {
+    _id: 'internet_banking',
+    total_value: 276500,
+    event_count: 5
+  },
+  {
+    _id: 'branch',
+    total_value: 60000,
+    event_count: 4
+  },
+  {
+    _id: 'ussd',
+    total_value: 17200,
+    event_count: 3
+  }
+]
+
+=== Pipeline 2: top 5 transfer references by event count ===
+[
+  {
+    _id: 'TRF-0000004',
+    events: 1,
+    total_amount: 85000
+  },
+  {
+    _id: 'TRF-0000010',
+    events: 1,
+    total_amount: 67500
+  },
+  {
+    _id: 'TRF-0000012',
+    events: 1,
+    total_amount: 42500
+  },
+  {
+    _id: 'TRF-0000008',
+    events: 1,
+    total_amount: 31000
+  },
+  {
+    _id: 'TRF-0000002',
+    events: 1,
+    total_amount: 27500
+  }
+]
+
+=== Pipeline 3: failed event rate by channel ===
+[
+  {
+    _id: 'ussd',
+    total: 3,
+    failed: 1,
+    channel: 'ussd',
+    failed_rate_pct: 33.33333333333333
+  },
+  {
+    _id: 'internet_banking',
+    total: 5,
+    failed: 1,
+    channel: 'internet_banking',
+    failed_rate_pct: 20
+  },
+  {
+    _id: 'branch',
+    total: 4,
+    failed: 0,
+    channel: 'branch',
+    failed_rate_pct: 0
+  }
+]
+
+02_data_and_queries.js complete.
+=== P4 03_bulk_and_index_demo
+Dropped existing index idx_channel_amount_created.
+Inserted 40000 documents in 936 ms.
+
+=== BEFORE: COLLSCAN ($natural hint) ===
+Stage BEFORE:        COLLSCAN
+Docs BEFORE:         40012
+Time ms BEFORE:      32
+Docs returned BEFORE: 538
+
+Created compound index idx_channel_amount_created.
+
+=== AFTER: IXSCAN (compound index) ===
+Stage AFTER:         IXSCAN
+Docs AFTER:          538
+Time ms AFTER:       3
+Docs returned AFTER: 538
+
+=== SUMMARY ===
+Stage     | Docs examined | Time ms
+BEFORE    | 40012 | 32
+AFTER     | 538 | 3
+
+03_bulk_and_index_demo.js complete.
+P4 COMPLETE

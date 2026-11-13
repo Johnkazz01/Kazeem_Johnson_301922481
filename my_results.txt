@@ -1,0 +1,260 @@
+RESULTS for Johnson Kazeem (2026/A/MIT/0691) generated Fri Nov 13 22:22:12 UTC 2026
+
+################ PORTFOLIO 1 (portfolio-1-database-design)
+ balance check: PASS (all cached balances match ledger)
+ bulk summary: transfers=50000
+ bulk summary: ledger_entries=92000
+ bulk summary: pending_transfers_next_14_days=2000
+psql:05_constraint_tests.sql:22: NOTICE:  PASS: customer_type_check - new row for relation "customer" violates check constraint "customer_customer_type_check"
+psql:05_constraint_tests.sql:36: NOTICE:  PASS: unique_bvn - duplicate key value violates unique constraint "customer_bvn_key"
+psql:05_constraint_tests.sql:50: NOTICE:  PASS: fk_account_customer - insert or update on table "account" violates foreign key constraint "account_customer_id_fkey"
+psql:05_constraint_tests.sql:64: NOTICE:  PASS: transfer_amount_positive - new row for relation "transfer" violates check constraint "transfer_amount_check"
+psql:05_constraint_tests.sql:78: NOTICE:  PASS: transfer_self_transfer - new row for relation "transfer" violates check constraint "transfer_check"
+psql:05_constraint_tests.sql:104: NOTICE:  PASS: closed_account_no_transact - Account 19 is CLOSED and cannot transact
+psql:05_constraint_tests.sql:130: NOTICE:  PASS: frozen_account_no_transact - Account 20 is FROZEN and cannot transact
+psql:05_constraint_tests.sql:158: NOTICE:  PASS: debit_below_zero - Insufficient funds on account 21: debit of 1000.00 would leave balance -1000.00
+psql:05_constraint_tests.sql:186: NOTICE:  PASS: balanced_debit_credit - Unbalanced ledger for transfer 50022: debits=200.00, credits=0.00
+psql:05_constraint_tests.sql:206: NOTICE:  PASS: partial_unique_standing_order - duplicate key value violates unique constraint "uq_active_standing_order"
+psql:05_constraint_tests.sql:234: NOTICE:  PASS: control_valid_transfer - balanced 1000 NGN transfer posted successfully
+ unbalanced_transfers 
+ failed_transfers_with_ledger_entries 
+P1 COMPLETE
+
+################ PORTFOLIO 2 (portfolio-2-query-optimisation)
+=== P2 queries
+=== P2 explain analyze (before/after)
+======================================================================
+======================================================================
+               ->  Bitmap Heap Scan on ledger_entry le  (cost=5.13..340.60 rows=37 width=410) (actual time=0.470..4.389 rows=2001 loops=1)
+                     ->  Bitmap Index Scan on idx_ledger_account  (cost=0.00..5.12 rows=111 width=0) (actual time=0.314..0.314 rows=6001 loops=1)
+                           Index Cond: (account_id = 2)
+               ->  Index Scan using transfer_pkey on transfer t  (cost=0.29..7.87 rows=1 width=104) (actual time=0.002..0.002 rows=1 loops=2001)
+                     Index Cond: (transfer_id = le.transfer_id)
+ Planning:
+ Planning Time: 2.230 ms
+ Execution Time: 10.030 ms
+                     ->  Seq Scan on account da  (cost=0.00..15.00 rows=2 width=50) (actual time=0.010..0.016 rows=6 loops=1)
+                     ->  Bitmap Heap Scan on transfer t  (cost=4.66..164.59 rows=17 width=198) (actual time=0.172..1.857 rows=510 loops=6)
+                           ->  Bitmap Index Scan on idx_transfer_debit  (cost=0.00..4.66 rows=50 width=0) (actual time=0.092..0.092 rows=2781 loops=6)
+                                 Index Cond: (debit_account_id = da.account_id)
+               ->  Index Scan using account_pkey on account ca  (cost=0.15..0.18 rows=1 width=50) (actual time=0.000..0.000 rows=1 loops=3057)
+                     Index Cond: (account_id = t.credit_account_id)
+ Planning:
+ Planning Time: 0.455 ms
+ Execution Time: 14.581 ms
+                                 ->  Seq Scan on transfer t  (cost=0.00..1010.10 rows=10010 width=198) (actual time=0.005..3.967 rows=50016 loops=1)
+                                       ->  Seq Scan on account da  (cost=0.00..14.00 rows=400 width=16) (actual time=0.001..0.003 rows=17 loops=1)
+                                 ->  Seq Scan on customer dc  (cost=0.00..10.70 rows=70 width=8) (actual time=0.001..0.002 rows=16 loops=1)
+                           ->  Seq Scan on account ca  (cost=0.00..14.00 rows=400 width=16) (actual time=0.004..0.006 rows=17 loops=1)
+                     ->  Seq Scan on customer cc  (cost=0.00..10.70 rows=70 width=8) (actual time=0.013..0.015 rows=16 loops=1)
+ Planning:
+ Planning Time: 0.994 ms
+ Execution Time: 33.896 ms
+                     ->  Seq Scan on transfer t  (cost=0.00..1085.17 rows=3337 width=198) (actual time=0.011..9.942 rows=8617 loops=1)
+                           ->  Seq Scan on account da  (cost=0.00..14.00 rows=400 width=50) (actual time=0.003..0.006 rows=17 loops=1)
+                     ->  Seq Scan on account ca  (cost=0.00..14.00 rows=400 width=50) (actual time=0.007..0.010 rows=17 loops=1)
+ Planning:
+ Planning Time: 0.364 ms
+ Execution Time: 15.706 ms
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+         ->  Index Scan Backward using idx_ledger_account_date on ledger_entry le  (cost=0.30..4416.02 rows=1974 width=64) (actual time=0.020..0.065 rows=50 loops=1)
+               Index Cond: ((account_id = 2) AND (created_at >= (now() - '60 days'::interval)))
+         ->  Index Scan using transfer_pkey on transfer t  (cost=0.29..2.43 rows=1 width=27) (actual time=0.003..0.003 rows=1 loops=50)
+               Index Cond: (transfer_id = le.transfer_id)
+ Planning:
+ Planning Time: 0.620 ms
+ Execution Time: 0.277 ms
+                     ->  Bitmap Heap Scan on transfer t  (cost=99.08..1159.90 rows=8618 width=56) (actual time=0.301..1.497 rows=8617 loops=1)
+                           ->  Bitmap Index Scan on idx_transfer_created_at  (cost=0.00..96.93 rows=8618 width=0) (actual time=0.256..0.257 rows=8617 loops=1)
+                                 Index Cond: (created_at >= (now() - '30 days'::interval))
+                           ->  Bitmap Heap Scan on account da  (cost=4.16..9.50 rows=2 width=50) (actual time=0.009..0.010 rows=6 loops=1)
+                                 ->  Bitmap Index Scan on idx_account_branch  (cost=0.00..4.16 rows=2 width=0) (actual time=0.004..0.004 rows=6 loops=1)
+                                       Index Cond: (branch_id = 1)
+               ->  Index Scan using account_pkey on account ca  (cost=0.15..0.17 rows=1 width=50) (actual time=0.001..0.001 rows=1 loops=3057)
+                     Index Cond: (account_id = t.credit_account_id)
+ Planning:
+ Planning Time: 0.299 ms
+ Execution Time: 6.545 ms
+                           ->  Index Scan Backward using idx_transfer_created_at on transfer t  (cost=0.29..4558.53 rows=50016 width=56) (actual time=0.010..0.243 rows=327 loops=1)
+                                 ->  Index Scan using account_pkey on account da  (cost=0.15..0.17 rows=1 width=16) (actual time=0.003..0.003 rows=1 loops=2)
+                                       Index Cond: (account_id = t.debit_account_id)
+                     ->  Index Only Scan using customer_pkey on customer dc  (cost=0.14..0.28 rows=1 width=8) (actual time=0.001..0.001 rows=1 loops=327)
+                           Index Cond: (customer_id = da.customer_id)
+                     ->  Index Scan using account_pkey on account ca  (cost=0.15..0.17 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=2)
+                           Index Cond: (account_id = t.credit_account_id)
+         ->  Index Only Scan using customer_pkey on customer cc  (cost=0.14..0.28 rows=1 width=8) (actual time=0.000..0.000 rows=1 loops=327)
+               Index Cond: (customer_id = ca.customer_id)
+ Planning:
+ Planning Time: 1.060 ms
+ Execution Time: 1.031 ms
+               ->  Index Scan Backward using idx_transfer_created_at on transfer t  (cost=0.29..3823.11 rows=8618 width=56) (actual time=0.011..0.075 rows=100 loops=1)
+                     Index Cond: (created_at >= (now() - '30 days'::interval))
+                     ->  Index Scan using account_pkey on account da  (cost=0.15..0.17 rows=1 width=50) (actual time=0.003..0.003 rows=1 loops=1)
+                           Index Cond: (account_id = t.debit_account_id)
+               ->  Index Scan using account_pkey on account ca  (cost=0.15..0.17 rows=1 width=50) (actual time=0.001..0.001 rows=1 loops=1)
+                     Index Cond: (account_id = t.credit_account_id)
+ Planning:
+ Planning Time: 0.312 ms
+ Execution Time: 0.182 ms
+======================================================================
+PHASE 4: aggregate query (Q5) - remains a Seq Scan by design
+======================================================================
+--- Q5 (daily transaction value per branch) AFTER index - still Seq Scan ---
+                           ->  Seq Scan on transfer t  (cost=0.00..1535.20 rows=45983 width=21) (actual time=0.005..6.681 rows=46016 loops=1)
+                                 ->  Seq Scan on account a  (cost=0.00..14.00 rows=400 width=16) (actual time=0.003..0.005 rows=17 loops=1)
+                           ->  Seq Scan on branch b  (cost=0.00..10.70 rows=70 width=46) (actual time=0.005..0.006 rows=6 loops=1)
+ Planning:
+ Planning Time: 0.333 ms
+ Execution Time: 33.399 ms
+=== Done. Paste the four BEFORE / AFTER pairs into README.md. ===
+P2 COMPLETE
+
+################ PORTFOLIO 3 (portfolio-3-transactions-concurrency)
+=== P3 transactions
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+=== 01_transactions.sql complete ===
+=== P3 race demos
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+======================================================================
+=== race_demos.py complete ===
+P3 COMPLETE
+--- race demos
+
+======================================================================
+PART 1: The bug - two workers read the same PENDING transfer
+======================================================================
+  Worker 1 result: ('settled', 50035)
+  Worker 2 result: ('error: Unbalanced ledger for transfer 50035: debits=2000.00, credits=1000.00', None)
+  Per-transfer ledger entry counts:
+    ('RACE-BUG-001', 2)
+    ('RACE-BUG-002', 0)
+  BUG: both workers targeted the same transfer_id. One worker either
+  duplicates the settlement or fails with a confusing check_violation.
+
+======================================================================
+PART 2: UNIQUE constraint fix - settlement_claim rejects duplicates
+======================================================================
+  Worker 1 result: ('rejected: duplicate key value violates unique constraint "settlement_claim_transfer_id_key"', 50037)
+  Worker 2 result: ('claimed', 50037)
+  Claims recorded: [('W2', 50037)]
+  FIX: exactly one worker holds the claim; the other is rejected cleanly.
+
+======================================================================
+PART 3: FOR UPDATE SKIP LOCKED - each worker gets a different transfer
+======================================================================
+  Worker 1 result: ('settled', 50039)
+  Worker 2 result: ('settled', 50038)
+  Per-transfer status / ledger counts:
+    ('RACE-SKIP-001', 'SETTLED', 2)
+    ('RACE-SKIP-002', 'SETTLED', 2)
+    ('RACE-SKIP-003', 'PENDING', 0)
+  FIX: each worker settled a different transfer; no duplicates.
+
+======================================================================
+PART 4: SERIALIZABLE isolation - expects SQLSTATE 40001
+======================================================================
+  Worker 1 result: ('40001 serialization_failure (40001)', None)
+  Worker 2 result: ('settled', 50041)
+  Under SERIALIZABLE isolation one worker commits and the other is
+  aborted with SQLSTATE 40001 (serialization_failure) and must retry.
+
+======================================================================
+PART 5: READ COMMITTED vs REPEATABLE READ
+======================================================================
+  READ COMMITTED  reader saw: before=PENDING, after=SETTLED (sees the writer's commit)
+  REPEATABLE READ reader saw: before=PENDING, after=PENDING (snapshot frozen at first read)
+
+======================================================================
+PART 6: Deadlock (40P01) and the fixed-account-order fix
+======================================================================
+  6a Buggy (lock in transfer direction):
+    Worker 1: ('committed', 'RACE-DEAD-001')
+    Worker 2: ('40P01 deadlock (DeadlockDetected)', 'RACE-DEAD-002')
+    One worker should hit SQLSTATE 40P01 (deadlock_detected).
+  6b Fixed (lock accounts in id order):
+    Worker 1: ('committed', 'RACE-DEAD-001')
+    Worker 2: ('committed', 'RACE-DEAD-002')
+    Both workers commit; the lock-ordering prevents the deadlock.
+
+=== race_demos.py complete ===
+
+################ PORTFOLIO 4 (portfolio-4-nosql)
+=== P4 01_setup
+=== transaction_events validator ===
+=== fraud_alerts validator ===
+=== P4 02_data_and_queries
+=== Pipeline 1: total transaction value and count by channel ===
+=== Pipeline 2: top 5 transfer references by event count ===
+=== Pipeline 3: failed event rate by channel ===
+=== P4 03_bulk_and_index_demo
+=== BEFORE: COLLSCAN ($natural hint) ===
+Stage BEFORE:        COLLSCAN
+Docs BEFORE:         40012
+Time ms BEFORE:      22
+Docs returned BEFORE: 538
+=== AFTER: IXSCAN (compound index) ===
+Stage AFTER:         IXSCAN
+Docs AFTER:          538
+Time ms AFTER:       2
+Docs returned AFTER: 538
+=== SUMMARY ===
+Stage     | Docs examined | Time ms
+BEFORE    | 40012 | 22
+AFTER     | 538 | 2
+P4 COMPLETE
+
+################ PORTFOLIO 5 (portfolio-5-distributed-cloud)
+=== P5 partitioning
+=== Rows per partition ===
+      partition_name       | row_count 
+(8 rows)
+=== EXPLAIN ANALYZE: single-month pruning ===
+ Append  (cost=0.16..2196.46 rows=140 width=418) (actual time=0.007..2.850 rows=7120 loops=1)
+   ->  Seq Scan on ledger_entry_part_2026_11 ledger_entry_part_1  (cost=0.00..146.30 rows=9 width=418) (actual time=0.007..2.416 rows=7120 loops=1)
+ Execution Time: 3.106 ms
+(10 rows)
+=== EXPLAIN ANALYZE: previous-month pruning ===
+ Append  (cost=0.16..2196.46 rows=140 width=418) (actual time=0.007..10.307 rows=15900 loops=1)
+   ->  Seq Scan on ledger_entry_part_2026_10 ledger_entry_part_1  (cost=0.00..326.48 rows=19 width=418) (actual time=0.007..9.151 rows=15900 loops=1)
+ Execution Time: 10.970 ms
+(10 rows)
+=== 01_partitioning.sql complete ===
+=== P5 replica setup
+replica started on port 55432
+=== P5 replica tests
+=== 1. Who is who ===
+You are now connected to database "txnbank" as user "codespace".
+ expected | port | in_recovery 
+ primary  | 5432 | f
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "55432".
+ expected | port  | in_recovery 
+ replica  | 55432 | t
+=== 2. Write on the replica must be rejected ===
+psql:03_replica_tests.sql:10: ERROR:  cannot execute INSERT in a read-only transaction
+=== 3. Insert on the primary, then read it on the replica ===
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "55432".
+    code    |     name     
+ RPL-TEST01 | Replica test
+   replay_lag    | replica_lsn 
+You are now connected to database "txnbank" as user "codespace" via socket in "/var/run/postgresql" at port "5432".
+=== replica tests done ===
+P5 COMPLETE

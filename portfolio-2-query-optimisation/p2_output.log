@@ -1,0 +1,354 @@
+=== P2 queries
+=== P2 explain analyze (before/after)
+SET
+======================================================================
+PHASE 1: EXPLAIN ANALYZE with supporting P2 indexes DROPPED
+======================================================================
+DROP INDEX
+DROP INDEX
+DROP INDEX
+--- Q1 (account statement) BEFORE index ---
+                                                                    QUERY PLAN                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=632.75..632.85 rows=37 width=498) (actual time=9.934..9.941 rows=50 loops=1)
+   Buffers: shared hit=7242
+   ->  Sort  (cost=632.75..632.85 rows=37 width=498) (actual time=9.932..9.936 rows=50 loops=1)
+         Sort Key: le.created_at DESC
+         Sort Method: top-N heapsort  Memory: 35kB
+         Buffers: shared hit=7242
+         ->  Nested Loop  (cost=5.41..631.79 rows=37 width=498) (actual time=0.488..9.357 rows=2001 loops=1)
+               Buffers: shared hit=7239
+               ->  Bitmap Heap Scan on ledger_entry le  (cost=5.13..340.60 rows=37 width=410) (actual time=0.470..4.389 rows=2001 loops=1)
+                     Recheck Cond: (account_id = 2)
+                     Filter: (created_at >= (now() - '60 days'::interval))
+                     Rows Removed by Filter: 4000
+                     Heap Blocks: exact=1227
+                     Buffers: shared hit=1236
+                     ->  Bitmap Index Scan on idx_ledger_account  (cost=0.00..5.12 rows=111 width=0) (actual time=0.314..0.314 rows=6001 loops=1)
+                           Index Cond: (account_id = 2)
+                           Buffers: shared hit=9
+               ->  Index Scan using transfer_pkey on transfer t  (cost=0.29..7.87 rows=1 width=104) (actual time=0.002..0.002 rows=1 loops=2001)
+                     Index Cond: (transfer_id = le.transfer_id)
+                     Buffers: shared hit=6003
+ Planning:
+   Buffers: shared hit=368
+ Planning Time: 2.230 ms
+ Execution Time: 10.030 ms
+(24 rows)
+
+--- Q2 (branch report) BEFORE index ---
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=347.92..347.96 rows=17 width=266) (actual time=14.542..14.550 rows=50 loops=1)
+   Buffers: shared hit=10689
+   ->  Sort  (cost=347.92..347.96 rows=17 width=266) (actual time=14.541..14.545 rows=50 loops=1)
+         Sort Key: t.created_at DESC
+         Sort Method: top-N heapsort  Memory: 35kB
+         Buffers: shared hit=10689
+         ->  Nested Loop  (cost=4.81..347.57 rows=17 width=266) (actual time=0.249..13.629 rows=3057 loops=1)
+               Buffers: shared hit=10689
+               ->  Nested Loop  (cost=4.66..344.52 rows=17 width=232) (actual time=0.245..11.468 rows=3057 loops=1)
+                     Buffers: shared hit=4575
+                     ->  Seq Scan on account da  (cost=0.00..15.00 rows=2 width=50) (actual time=0.010..0.016 rows=6 loops=1)
+                           Filter: (branch_id = 1)
+                           Rows Removed by Filter: 11
+                           Buffers: shared hit=1
+                     ->  Bitmap Heap Scan on transfer t  (cost=4.66..164.59 rows=17 width=198) (actual time=0.172..1.857 rows=510 loops=6)
+                           Recheck Cond: (da.account_id = debit_account_id)
+                           Filter: (created_at >= (now() - '30 days'::interval))
+                           Rows Removed by Filter: 2271
+                           Heap Blocks: exact=4552
+                           Buffers: shared hit=4574
+                           ->  Bitmap Index Scan on idx_transfer_debit  (cost=0.00..4.66 rows=50 width=0) (actual time=0.092..0.092 rows=2781 loops=6)
+                                 Index Cond: (debit_account_id = da.account_id)
+                                 Buffers: shared hit=22
+               ->  Index Scan using account_pkey on account ca  (cost=0.15..0.18 rows=1 width=50) (actual time=0.000..0.000 rows=1 loops=3057)
+                     Index Cond: (account_id = t.credit_account_id)
+                     Buffers: shared hit=6114
+ Planning:
+   Buffers: shared hit=92
+ Planning Time: 0.455 ms
+ Execution Time: 14.581 ms
+(30 rows)
+
+--- Q3 (customer report) BEFORE index ---
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1187.63..1187.75 rows=50 width=214) (actual time=33.806..33.831 rows=50 loops=1)
+   Buffers: shared hit=914
+   ->  Sort  (cost=1187.63..1188.34 rows=284 width=214) (actual time=33.805..33.826 rows=50 loops=1)
+         Sort Key: t.created_at DESC
+         Sort Method: top-N heapsort  Memory: 32kB
+         Buffers: shared hit=914
+         ->  Hash Join  (cost=61.15..1178.19 rows=284 width=214) (actual time=0.108..32.296 rows=6668 loops=1)
+               Hash Cond: (ca.customer_id = cc.customer_id)
+               Join Filter: ((2 = dc.customer_id) OR (2 = cc.customer_id))
+               Rows Removed by Join Filter: 43348
+               Buffers: shared hit=914
+               ->  Hash Join  (cost=49.58..1139.62 rows=10010 width=198) (actual time=0.067..26.536 rows=50016 loops=1)
+                     Hash Cond: (t.credit_account_id = ca.account_id)
+                     Buffers: shared hit=913
+                     ->  Hash Join  (cost=30.57..1094.06 rows=10010 width=198) (actual time=0.043..19.919 rows=50016 loops=1)
+                           Hash Cond: (da.customer_id = dc.customer_id)
+                           Buffers: shared hit=912
+                           ->  Hash Join  (cost=19.00..1055.65 rows=10010 width=198) (actual time=0.024..13.537 rows=50016 loops=1)
+                                 Hash Cond: (t.debit_account_id = da.account_id)
+                                 Buffers: shared hit=911
+                                 ->  Seq Scan on transfer t  (cost=0.00..1010.10 rows=10010 width=198) (actual time=0.005..3.967 rows=50016 loops=1)
+                                       Buffers: shared hit=910
+                                 ->  Hash  (cost=14.00..14.00 rows=400 width=16) (actual time=0.006..0.007 rows=17 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                       Buffers: shared hit=1
+                                       ->  Seq Scan on account da  (cost=0.00..14.00 rows=400 width=16) (actual time=0.001..0.003 rows=17 loops=1)
+                                             Buffers: shared hit=1
+                           ->  Hash  (cost=10.70..10.70 rows=70 width=8) (actual time=0.007..0.007 rows=16 loops=1)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                 Buffers: shared hit=1
+                                 ->  Seq Scan on customer dc  (cost=0.00..10.70 rows=70 width=8) (actual time=0.001..0.002 rows=16 loops=1)
+                                       Buffers: shared hit=1
+                     ->  Hash  (cost=14.00..14.00 rows=400 width=16) (actual time=0.010..0.024 rows=17 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           Buffers: shared hit=1
+                           ->  Seq Scan on account ca  (cost=0.00..14.00 rows=400 width=16) (actual time=0.004..0.006 rows=17 loops=1)
+                                 Buffers: shared hit=1
+               ->  Hash  (cost=10.70..10.70 rows=70 width=8) (actual time=0.026..0.027 rows=16 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                     Buffers: shared hit=1
+                     ->  Seq Scan on customer cc  (cost=0.00..10.70 rows=70 width=8) (actual time=0.013..0.015 rows=16 loops=1)
+                           Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=66
+ Planning Time: 0.994 ms
+ Execution Time: 33.896 ms
+(46 rows)
+
+--- Q4 (last 30 days) BEFORE index ---
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1268.41..1268.66 rows=100 width=266) (actual time=15.642..15.656 rows=100 loops=1)
+   Buffers: shared hit=912
+   ->  Sort  (cost=1268.41..1276.75 rows=3337 width=266) (actual time=15.641..15.648 rows=100 loops=1)
+         Sort Key: t.created_at DESC
+         Sort Method: top-N heapsort  Memory: 47kB
+         Buffers: shared hit=912
+         ->  Hash Join  (cost=38.00..1140.87 rows=3337 width=266) (actual time=0.058..12.986 rows=8617 loops=1)
+               Hash Cond: (t.credit_account_id = ca.account_id)
+               Buffers: shared hit=912
+               ->  Hash Join  (cost=19.00..1113.02 rows=3337 width=232) (actual time=0.032..11.278 rows=8617 loops=1)
+                     Hash Cond: (t.debit_account_id = da.account_id)
+                     Buffers: shared hit=911
+                     ->  Seq Scan on transfer t  (cost=0.00..1085.17 rows=3337 width=198) (actual time=0.011..9.942 rows=8617 loops=1)
+                           Filter: (created_at >= (now() - '30 days'::interval))
+                           Rows Removed by Filter: 41399
+                           Buffers: shared hit=910
+                     ->  Hash  (cost=14.00..14.00 rows=400 width=50) (actual time=0.010..0.011 rows=17 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           Buffers: shared hit=1
+                           ->  Seq Scan on account da  (cost=0.00..14.00 rows=400 width=50) (actual time=0.003..0.006 rows=17 loops=1)
+                                 Buffers: shared hit=1
+               ->  Hash  (cost=14.00..14.00 rows=400 width=50) (actual time=0.016..0.017 rows=17 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                     Buffers: shared hit=1
+                     ->  Seq Scan on account ca  (cost=0.00..14.00 rows=400 width=50) (actual time=0.007..0.010 rows=17 loops=1)
+                           Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.364 ms
+ Execution Time: 15.706 ms
+(30 rows)
+
+======================================================================
+PHASE 2: recreate the supporting P2 indexes
+======================================================================
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+ANALYZE
+ANALYZE
+======================================================================
+PHASE 3: EXPLAIN ANALYZE with supporting P2 indexes RECREATED
+======================================================================
+--- Q1 (account statement) AFTER index ---
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.59..234.08 rows=50 width=75) (actual time=0.029..0.224 rows=50 loops=1)
+   Buffers: shared hit=200 read=2
+   ->  Nested Loop  (cost=0.59..9219.02 rows=1974 width=75) (actual time=0.028..0.220 rows=50 loops=1)
+         Buffers: shared hit=200 read=2
+         ->  Index Scan Backward using idx_ledger_account_date on ledger_entry le  (cost=0.30..4416.02 rows=1974 width=64) (actual time=0.020..0.065 rows=50 loops=1)
+               Index Cond: ((account_id = 2) AND (created_at >= (now() - '60 days'::interval)))
+               Buffers: shared hit=50 read=2
+         ->  Index Scan using transfer_pkey on transfer t  (cost=0.29..2.43 rows=1 width=27) (actual time=0.003..0.003 rows=1 loops=50)
+               Index Cond: (transfer_id = le.transfer_id)
+               Buffers: shared hit=150
+ Planning:
+   Buffers: shared hit=146 read=3
+ Planning Time: 0.620 ms
+ Execution Time: 0.277 ms
+(14 rows)
+
+--- Q2 (branch report) AFTER index ---
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1200.80..1200.90 rows=43 width=124) (actual time=6.490..6.501 rows=50 loops=1)
+   Buffers: shared hit=6546 read=8
+   ->  Sort  (cost=1200.80..1200.90 rows=43 width=124) (actual time=6.488..6.495 rows=50 loops=1)
+         Sort Key: t.created_at DESC
+         Sort Method: top-N heapsort  Memory: 36kB
+         Buffers: shared hit=6546 read=8
+         ->  Nested Loop  (cost=108.76..1199.63 rows=43 width=124) (actual time=0.323..5.420 rows=3057 loops=1)
+               Buffers: shared hit=6546 read=8
+               ->  Hash Join  (cost=108.61..1192.30 rows=43 width=90) (actual time=0.320..2.907 rows=3057 loops=1)
+                     Hash Cond: (t.debit_account_id = da.account_id)
+                     Buffers: shared hit=432 read=8
+                     ->  Bitmap Heap Scan on transfer t  (cost=99.08..1159.90 rows=8618 width=56) (actual time=0.301..1.497 rows=8617 loops=1)
+                           Recheck Cond: (created_at >= (now() - '30 days'::interval))
+                           Heap Blocks: exact=430
+                           Buffers: shared hit=430 read=8
+                           ->  Bitmap Index Scan on idx_transfer_created_at  (cost=0.00..96.93 rows=8618 width=0) (actual time=0.256..0.257 rows=8617 loops=1)
+                                 Index Cond: (created_at >= (now() - '30 days'::interval))
+                                 Buffers: shared read=8
+                     ->  Hash  (cost=9.50..9.50 rows=2 width=50) (actual time=0.013..0.014 rows=6 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           Buffers: shared hit=2
+                           ->  Bitmap Heap Scan on account da  (cost=4.16..9.50 rows=2 width=50) (actual time=0.009..0.010 rows=6 loops=1)
+                                 Recheck Cond: (branch_id = 1)
+                                 Heap Blocks: exact=1
+                                 Buffers: shared hit=2
+                                 ->  Bitmap Index Scan on idx_account_branch  (cost=0.00..4.16 rows=2 width=0) (actual time=0.004..0.004 rows=6 loops=1)
+                                       Index Cond: (branch_id = 1)
+                                       Buffers: shared hit=1
+               ->  Index Scan using account_pkey on account ca  (cost=0.15..0.17 rows=1 width=50) (actual time=0.001..0.001 rows=1 loops=3057)
+                     Index Cond: (account_id = t.credit_account_id)
+                     Buffers: shared hit=6114
+ Planning:
+   Buffers: shared hit=16
+ Planning Time: 0.299 ms
+ Execution Time: 6.545 ms
+(35 rows)
+
+--- Q3 (customer report) AFTER index ---
+                                                                                     QUERY PLAN                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.89..1261.94 rows=50 width=72) (actual time=0.878..0.996 rows=50 loops=1)
+   Buffers: shared hit=1645
+   ->  Nested Loop  (cost=0.89..35789.44 rows=1419 width=72) (actual time=0.878..0.991 rows=50 loops=1)
+         Join Filter: ((2 = dc.customer_id) OR (2 = cc.customer_id))
+         Rows Removed by Join Filter: 277
+         Buffers: shared hit=1645
+         ->  Nested Loop  (cost=0.75..21032.21 rows=50016 width=56) (actual time=0.066..0.763 rows=327 loops=1)
+               Buffers: shared hit=991
+               ->  Nested Loop  (cost=0.59..19781.02 rows=50016 width=56) (actual time=0.063..0.664 rows=327 loops=1)
+                     Buffers: shared hit=987
+                     ->  Nested Loop  (cost=0.45..5809.88 rows=50016 width=56) (actual time=0.019..0.403 rows=327 loops=1)
+                           Buffers: shared hit=333
+                           ->  Index Scan Backward using idx_transfer_created_at on transfer t  (cost=0.29..4558.53 rows=50016 width=56) (actual time=0.010..0.243 rows=327 loops=1)
+                                 Buffers: shared hit=329
+                           ->  Memoize  (cost=0.16..0.18 rows=1 width=16) (actual time=0.000..0.000 rows=1 loops=327)
+                                 Cache Key: t.debit_account_id
+                                 Cache Mode: logical
+                                 Hits: 325  Misses: 2  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+                                 Buffers: shared hit=4
+                                 ->  Index Scan using account_pkey on account da  (cost=0.15..0.17 rows=1 width=16) (actual time=0.003..0.003 rows=1 loops=2)
+                                       Index Cond: (account_id = t.debit_account_id)
+                                       Buffers: shared hit=4
+                     ->  Index Only Scan using customer_pkey on customer dc  (cost=0.14..0.28 rows=1 width=8) (actual time=0.001..0.001 rows=1 loops=327)
+                           Index Cond: (customer_id = da.customer_id)
+                           Heap Fetches: 327
+                           Buffers: shared hit=654
+               ->  Memoize  (cost=0.16..0.18 rows=1 width=16) (actual time=0.000..0.000 rows=1 loops=327)
+                     Cache Key: t.credit_account_id
+                     Cache Mode: logical
+                     Hits: 325  Misses: 2  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+                     Buffers: shared hit=4
+                     ->  Index Scan using account_pkey on account ca  (cost=0.15..0.17 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=2)
+                           Index Cond: (account_id = t.credit_account_id)
+                           Buffers: shared hit=4
+         ->  Index Only Scan using customer_pkey on customer cc  (cost=0.14..0.28 rows=1 width=8) (actual time=0.000..0.000 rows=1 loops=327)
+               Index Cond: (customer_id = ca.customer_id)
+               Heap Fetches: 327
+               Buffers: shared hit=654
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 1.060 ms
+ Execution Time: 1.031 ms
+(42 rows)
+
+--- Q4 (last 30 days) AFTER index ---
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.61..50.02 rows=100 width=124) (actual time=0.021..0.157 rows=100 loops=1)
+   Buffers: shared hit=106
+   ->  Nested Loop  (cost=0.61..4258.97 rows=8618 width=124) (actual time=0.021..0.150 rows=100 loops=1)
+         Buffers: shared hit=106
+         ->  Nested Loop  (cost=0.45..4041.12 rows=8618 width=90) (actual time=0.018..0.119 rows=100 loops=1)
+               Buffers: shared hit=104
+               ->  Index Scan Backward using idx_transfer_created_at on transfer t  (cost=0.29..3823.11 rows=8618 width=56) (actual time=0.011..0.075 rows=100 loops=1)
+                     Index Cond: (created_at >= (now() - '30 days'::interval))
+                     Buffers: shared hit=102
+               ->  Memoize  (cost=0.16..0.18 rows=1 width=50) (actual time=0.000..0.000 rows=1 loops=100)
+                     Cache Key: t.debit_account_id
+                     Cache Mode: logical
+                     Hits: 99  Misses: 1  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+                     Buffers: shared hit=2
+                     ->  Index Scan using account_pkey on account da  (cost=0.15..0.17 rows=1 width=50) (actual time=0.003..0.003 rows=1 loops=1)
+                           Index Cond: (account_id = t.debit_account_id)
+                           Buffers: shared hit=2
+         ->  Memoize  (cost=0.16..0.18 rows=1 width=50) (actual time=0.000..0.000 rows=1 loops=100)
+               Cache Key: t.credit_account_id
+               Cache Mode: logical
+               Hits: 99  Misses: 1  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+               Buffers: shared hit=2
+               ->  Index Scan using account_pkey on account ca  (cost=0.15..0.17 rows=1 width=50) (actual time=0.001..0.001 rows=1 loops=1)
+                     Index Cond: (account_id = t.credit_account_id)
+                     Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.312 ms
+ Execution Time: 0.182 ms
+(29 rows)
+
+======================================================================
+PHASE 4: aggregate query (Q5) - remains a Seq Scan by design
+======================================================================
+--- Q5 (daily transaction value per branch) AFTER index - still Seq Scan ---
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=3637.55..3637.70 rows=60 width=82) (actual time=33.282..33.292 rows=60 loops=1)
+   Buffers: shared hit=915
+   ->  Sort  (cost=3637.55..3700.72 rows=25270 width=82) (actual time=33.280..33.287 rows=60 loops=1)
+         Sort Key: (date(t.created_at)) DESC, (sum(t.amount)) DESC
+         Sort Method: top-N heapsort  Memory: 32kB
+         Buffers: shared hit=915
+         ->  HashAggregate  (cost=2385.81..2764.86 rows=25270 width=82) (actual time=33.098..33.230 rows=193 loops=1)
+               Group Key: b.code, date(t.created_at)
+               Batches: 1  Memory Usage: 913kB
+               Buffers: shared hit=912
+               ->  Hash Join  (cost=30.57..1925.98 rows=45983 width=47) (actual time=0.030..23.088 rows=46016 loops=1)
+                     Hash Cond: (a.branch_id = b.branch_id)
+                     Buffers: shared hit=912
+                     ->  Hash Join  (cost=19.00..1676.18 rows=45983 width=21) (actual time=0.016..14.273 rows=46016 loops=1)
+                           Hash Cond: (t.debit_account_id = a.account_id)
+                           Buffers: shared hit=911
+                           ->  Seq Scan on transfer t  (cost=0.00..1535.20 rows=45983 width=21) (actual time=0.005..6.681 rows=46016 loops=1)
+                                 Filter: ((status)::text = 'SETTLED'::text)
+                                 Rows Removed by Filter: 4000
+                                 Buffers: shared hit=910
+                           ->  Hash  (cost=14.00..14.00 rows=400 width=16) (actual time=0.007..0.008 rows=17 loops=1)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                 Buffers: shared hit=1
+                                 ->  Seq Scan on account a  (cost=0.00..14.00 rows=400 width=16) (actual time=0.003..0.005 rows=17 loops=1)
+                                       Buffers: shared hit=1
+                     ->  Hash  (cost=10.70..10.70 rows=70 width=46) (actual time=0.009..0.010 rows=6 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           Buffers: shared hit=1
+                           ->  Seq Scan on branch b  (cost=0.00..10.70 rows=70 width=46) (actual time=0.005..0.006 rows=6 loops=1)
+                                 Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=81
+ Planning Time: 0.333 ms
+ Execution Time: 33.399 ms
+(34 rows)
+
+=== Done. Paste the four BEFORE / AFTER pairs into README.md. ===
+P2 COMPLETE
